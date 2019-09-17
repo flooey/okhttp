@@ -33,6 +33,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.tls.internal.TlsUtil.localhost
 import okio.ByteString.Companion.toByteString
+import org.conscrypt.Conscrypt
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -46,6 +47,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.net.InetAddress
 import java.net.UnknownHostException
+import java.security.Security
 import javax.net.ssl.SSLPeerUnverifiedException
 import javax.net.ssl.SSLSocket
 
@@ -321,6 +323,12 @@ class OkHttpTest {
       InetAddress.getByName("www.google.com")
     } catch (uhe: UnknownHostException) {
       assumeNoException(uhe)
+    }
+  }
+
+  companion object {
+    init {
+      Security.insertProviderAt(Conscrypt.newProviderBuilder().build(), 1)
     }
   }
 }
