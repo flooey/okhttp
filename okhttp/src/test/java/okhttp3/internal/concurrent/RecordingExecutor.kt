@@ -13,40 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package okhttp3
+package okhttp3.internal.concurrent
 
-import org.assertj.core.api.Assertions.assertThat
 import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
-internal class RecordingExecutor(
-  private val dispatcherTest: DispatcherTest
-) : AbstractExecutorService() {
-  private var shutdown: Boolean = false
-  private val calls = mutableListOf<RealCall.AsyncCall>()
+open class RecordingExecutor : AbstractExecutorService() {
+  var shutdown: Boolean = false
+  val calls = mutableListOf<Runnable>()
 
   override fun execute(command: Runnable) {
     if (shutdown) throw RejectedExecutionException()
-    calls.add(command as RealCall.AsyncCall)
-  }
-
-  fun assertJobs(vararg expectedUrls: String) {
-    val actualUrls = calls.map { it.request().url.toString() }
-    assertThat(actualUrls).containsExactly(*expectedUrls)
-  }
-
-  fun finishJob(url: String) {
-    val i = calls.iterator()
-    while (i.hasNext()) {
-      val call = i.next()
-      if (call.request().url.toString() == url) {
-        i.remove()
-        dispatcherTest.dispatcher.finished(call)
-        return
-      }
-    }
-    throw AssertionError("No such job: $url")
+    calls.add(command)
   }
 
   override fun shutdown() {

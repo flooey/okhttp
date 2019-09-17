@@ -15,6 +15,15 @@
  */
 package okhttp3.internal.concurrent
 
+import okhttp3.internal.addIfAbsent
+import okhttp3.internal.notify
+import okhttp3.internal.threadFactory
+import okhttp3.internal.waitNanos
+import java.util.concurrent.Executor
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+
 /**
  * A set of worker threads that are shared among a set of task queues.
  *
@@ -27,12 +36,92 @@ package okhttp3.internal.concurrent
  *
  * Most applications should share a process-wide [TaskRunner] and use queues for per-client work.
  */
-interface TaskRunner {
-  fun newQueue(owner: Any): TaskQueue
+class TaskRunner(
+  private val executor: Executor = ThreadPoolExecutor(
+      0, // corePoolSize.
+      Int.MAX_VALUE, // maximumPoolSize.
+      60L, TimeUnit.SECONDS, // keepAliveTime.
+      SynchronousQueue(),
+      threadFactory("OkHttp", true)
+  )
+) {
+  // All state in all tasks and queues is guarded by this.
+
+  private var promoterRunning = false
+  private val activeQueues = mutableListOf<TaskQueue>()
+  private val promoter = Runnable { promote() }
+
+  fun newQueue(owner: Any) = TaskQueue(this, owner)
 
   /**
    * Returns a snapshot of queues that currently have tasks scheduled. The task runner does not
    * necessarily track queues that have no tasks scheduled.
    */
-  fun activeQueues(): List<TaskQueue>
+  fun activeQueues(): List<TaskQueue> {
+    synchronized(this) {
+      return activeQueues.toList()
+    }
+  }
+
+  internal fun kickPromoter(queue: TaskQueue) {
+    check(Thread.holdsLock(this))
+
+    if (queue.isActive()) {
+      activeQueues.addIfAbsent(queue)
+    } else {
+      activeQueues.remove(queue)
+    }
+
+    if (promoterRunning) {
+      notify()
+    } else {
+      promoterRunning = true
+      executor.execute(promoter)
+    }
+  }
+
+  private fun promote() {
+    synchronized(this) {
+      while (true) {
+        val now = System.nanoTime()
+        val delayNanos = promoteQueues(now)
+
+        if (delayNanos == -1L) {
+          promoterRunning = false
+          return
+        }
+
+        try {
+          waitNanos(delayNanos)
+        } catch (_: InterruptedException) {
+          // Will cause the thread to exit unless other connections are created!
+          cancelAll()
+        }
+      }
+    }
+  }
+
+  /**
+   * Start executing the next available tasks for all queues.
+   *
+   * Returns the delay until the next call to this method, -1L for no further calls, or
+   * [Long.MAX_VALUE] to wait indefinitely.
+   */
+  private fun promoteQueues(now: Long): Long {
+    var result = -1L
+
+    for (queue in activeQueues) {
+      val delayNanos = queue.promote(now, executor)
+      if (delayNanos == -1L) continue
+      result = if (result == -1L) delayNanos else minOf(result, delayNanos)
+    }
+
+    return result
+  }
+
+  private fun cancelAll() {
+    for (queue in activeQueues) {
+      queue.cancelAll()
+    }
+  }
 }

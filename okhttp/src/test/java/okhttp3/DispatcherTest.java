@@ -15,7 +15,7 @@ import static org.junit.Assert.fail;
 public final class DispatcherTest {
   @Rule public final OkHttpClientTestRule clientTestRule = new OkHttpClientTestRule();
 
-  RecordingExecutor executor = new RecordingExecutor(this);
+  DispatcherTestExecutor executor = new DispatcherTestExecutor(this);
   RecordingCallback callback = new RecordingCallback();
   RecordingWebSocketListener webSocketListener = new RecordingWebSocketListener();
   Dispatcher dispatcher = new Dispatcher(executor);

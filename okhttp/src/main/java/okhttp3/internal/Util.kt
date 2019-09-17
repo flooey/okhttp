@@ -516,26 +516,26 @@ fun Int.toHexString(): String = Integer.toHexString(this)
  */
 @Throws(InterruptedException::class)
 fun Any.lockAndWaitNanos(nanos: Long) {
+  synchronized(this) {
+    waitNanos(nanos)
+  }
+}
+
+/**
+ * Wait a duration in nanoseconds. Unlike [java.lang.Object.wait] this interprets 0 as "don't wait"
+ * instead of "wait forever".
+ */
+@Throws(InterruptedException::class)
+fun Any.waitNanos(nanos: Long) {
   val ms = nanos / 1_000_000L
   val ns = nanos - (ms * 1_000_000L)
-  synchronized(this) {
-    waitMillis(ms, ns.toInt())
+  if (ms > 0L || nanos > 0) {
+    (this as Object).wait(ms, ns.toInt())
   }
 }
 
 @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN", "NOTHING_TO_INLINE")
 inline fun Any.wait() = (this as Object).wait()
-
-/**
- * Lock and wait a duration in milliseconds and nanos.
- * Unlike [java.lang.Object.wait] this interprets 0 as "don't wait" instead of "wait forever".
- */
-@Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
-fun Any.waitMillis(timeout: Long, nanos: Int = 0) {
-  if (timeout > 0L || nanos > 0) {
-    (this as Object).wait(timeout, nanos)
-  }
-}
 
 @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN", "NOTHING_TO_INLINE")
 inline fun Any.notify() = (this as Object).notify()
@@ -565,4 +565,8 @@ fun <T> readFieldOrNull(instance: Any, fieldType: Class<T>, fieldName: String): 
   }
 
   return null
+}
+
+internal fun <E> MutableList<E>.addIfAbsent(element: E) {
+  if (!contains(element)) add(element)
 }
